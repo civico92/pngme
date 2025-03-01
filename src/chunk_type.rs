@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
+use std::fmt;
 use std::str::FromStr;
-
+#[derive(Debug, PartialEq)]
 pub struct ChunkType {
     bytes: [u8; 4],
 }
@@ -12,19 +13,61 @@ impl ChunkType {
 
     /// Must be in ASCII A-Z or a-z (decimal 65-90 and 97-122).
     fn is_valid_byte(byte: u8) -> bool {
-        (0x41 <= byte && byte <= 0x5a) || (0x61 <= byte && byte <= 0x7a)
+        (0x41..0x5a).contains(&byte) || (0x61..0x7a).contains(&byte)
+    }
+
+    fn is_valid(&self) -> bool {
+        self.is_reserved_bit_valid() && self.bytes.iter().all(|&byte| Self::is_valid_byte(byte))
+    }
+    fn is_critical(&self) -> bool {
+        self.bytes[0].is_ascii_uppercase()
+    }
+    fn is_public(&self) -> bool {
+        self.bytes[1].is_ascii_uppercase()
+    }
+    fn is_reserved_bit_valid(&self) -> bool {
+        self.bytes[2].is_ascii_uppercase()
+    }
+    fn is_safe_to_copy(&self) -> bool {
+        self.bytes[3].is_ascii_lowercase()
     }
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
-    type Error = crate::Error;
+    type Error = anyhow::Error;
 
-    fn try_from(bytes: [u8; 4]) -> Result<Self, Self::Error> {
-        for byte in bytes.iter() {
-            if !Self::is_valid_byte(byte) {
-                return Err(Box::new(Error));
-            }
+    fn try_from(bytes: [u8; 4]) -> anyhow::Result<Self> {
+        if !bytes.iter().all(|&byte| Self::is_valid_byte(byte)) {
+            anyhow::bail!("Invalid byte. Valid types are ASCII A-Z and a-z.")
+        } else {
+            Ok(Self { bytes })
         }
+    }
+}
+
+impl FromStr for ChunkType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        let bytes = s.as_bytes();
+
+        if bytes.len() == 4 && s.is_ascii() {
+            let array: [u8; 4] = bytes.try_into()?;
+            Self::try_from(array)
+        } else {
+            anyhow::bail!("String must be 4 ASCII bytes")
+        }
+    }
+}
+
+impl fmt::Display for ChunkType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            std::str::from_utf8(&self.bytes)
+                .expect("This is already validated to be a valid UTF-8 string")
+        )
     }
 }
 
